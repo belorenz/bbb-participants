@@ -1,0 +1,187 @@
+#!/usr/bin/python3
+
+import argparse
+import datetime
+import smtplib
+import ssl
+from ast import literal_eval
+from recordclass import recordclass
+from email.mime.text import MIMEText
+
+Conference = recordclass('Conference', ['name', 'start', 'end', 'attendees'])
+Attendee = recordclass('Attendee', ['name', 'duration', 'join_time'])
+
+class LogParser:
+
+    def __init__(self):
+        argparser = argparse.ArgumentParser(
+            description=__doc__)
+        argparser.add_argument(
+            '--logfile',
+            type=str,
+            metavar='L',
+            default='/var/log/bigbluebutton/bbb-web.log',
+            help='logfile to parse.')
+        argparser.add_argument(
+            '--host_sender',
+            type=str,
+            metavar='H',
+            help='Hostname of mail server to send report from.')
+        argparser.add_argument(
+            '--port_sender',
+            type=int,
+            default=465,
+            metavar='P',
+            help='Port of mail server to send report from.')
+        argparser.add_argument(
+            '--login_sender',
+            type=str,
+            metavar='l',
+            help='Login for email account to send report from.')
+        argparser.add_argument(
+            '--password_sender',
+            type=str,
+            metavar='p',
+            help='Password for email account to send report from.')
+        argparser.add_argument(
+            '--mail_to',
+            type=str,
+            metavar='m',
+            help='E-Mail address to send report to.')
+        argparser.add_argument(
+            '--mail_from',
+            type=str,
+            metavar='M',
+            help='E-Mail address to send report from.')
+
+        self.args = argparser.parse_args()
+        self.events_of_interest = []
+        self.conferences = {}
+        self.date_of_log = None
+
+
+    def parse_log_file(self, path_to_logfile):
+        lines_of_interest = []
+        with open(path_to_logfile, "r") as log:
+            for line in log.readlines():
+                if 'data={' in line and 'MeetingService' in line:
+                    pos_substring = line.find('data={')
+                    data_part = line[pos_substring:]
+                    splitted_line = line[:pos_substring].split()
+                    splitted_line.append(data_part)
+                    lines_of_interest.append(splitted_line)
+                else:
+                    continue
+
+                #if len(splitted_line) > 2 and \
+                #     splitted_line[2] == 'o.bigbluebutton.api.MeetingService' and \
+                #        splitted_line[1] == 'INFO':
+                #    lines_of_interest.append(splitted_line)
+        self.events_of_interest = lines_of_interest
+
+    def extract_conferences_from_log(self):
+
+        for entry in self.events_of_interest:
+            if len(entry) >= 6 and entry[5].startswith('data='):
+                # entry[5] = "data={"duration":0,"record":true,"logCode":"meeting_
+                # started","name":"TestSession02","description":"Meeting has started.
+                # ","meetingId":"7625fdcd695fa5c04e5859eaa18610602cc75008-1601285681296"
+                # ,"externalMeetingId":"kyb4iwctnlygfm0rqd18sy1uldhjj7nmiejmpyum",
+                # "isBreakout":false}'"
+
+                data_string = entry[5].replace('true', 'True').replace('false', 'False')
+                data_dict = literal_eval(data_string[5:])
+                if 'logCode' not in data_dict.keys() or 'meetingId' not in data_dict.keys():
+                    continue
+
+                code = data_dict['logCode']
+                conference_id = data_dict['meetingId']
+                event_time = self.str_to_time(entry[0])
+                if not self.date_of_log:
+                    self.date_of_log = '{}.{}.{}'.format(event_time.day, event_time.month, event_time.year)
+                if code == 'meeting_started':
+                    conference = Conference(name=data_dict['name'], attendees={}, start=event_time, end=None)
+                    self.conferences[conference_id] = conference
+                if code == 'meeting_ended' and conference_id in self.conferences.keys():
+                    conference = self.conferences[conference_id]
+                    conference.end = event_time
+                if code == 'user_joined_message':
+                    # get conference, or create one if there is none
+                    conference = self.get_or_create_conference(conference_id, data_dict, event_time)
+                    attendee_id = data_dict['externalUserId']
+                    if not attendee_id in conference.attendees:
+                        attendee = Attendee(name=data_dict['username'], duration=datetime.timedelta(seconds=0), join_time=event_time)
+                        conference.attendees[attendee_id] = attendee
+                    else:
+                        attendee = conference.attendees[attendee_id]
+                        attendee.join_time = event_time
+                if code == 'user_left_message':
+                    # get conference, or create one if there is none
+                    conference = self.get_or_create_conference(conference_id, data_dict, event_time)
+                    attendee_id = data_dict['externalUserId']
+                    event_time = self.str_to_time(entry[0])
+                    if attendee_id in conference.attendees:
+                        attendee = conference.attendees[attendee_id]
+                        attendee.duration += (event_time - attendee.join_time)
+
+    def get_or_create_conference(self, conference_id, data_dict, event_time):
+        # get conference, or create one if there is none
+        conference = self.conferences.get(conference_id, False)
+        if not conference:
+            conference = Conference(name=data_dict['name'], attendees={}, start=event_time, end=None)
+            self.conferences[conference_id] = conference
+        return conference
+
+    def str_to_time(self, str):
+        '2020-09-28T11:34:42.326+02:00'
+        return datetime.datetime.strptime(str[:-10], "%Y-%m-%dT%H:%M:%S")
+
+    def finish_uncomplete_conferences(self):
+        now = datetime.datetime.now()
+        for conf_id, conference in self.conferences.items():
+            if conference.end is None:
+                conference.end = now
+                for attendee_id, attendee in conference.attendees.items():
+                    attendee.duration += (now - attendee.join_time)
+
+    def generate_attendants_list(self):
+        if not self.date_of_log:
+            self.date_of_log = datetime.datetime.now().date().strftime("%d.%m.%Y")
+        self.subject = 'Übersicht der BigBlueButton Konferenzen am {}\n\n'.format(self.date_of_log)
+        conference_list = list(self.conferences.values())
+        conference_list.sort(key=lambda conference : conference.start)
+        msg = self.subject + '\n\n'
+
+        conferences_to_ignore = [ "BoB Jour Fixe", "Sleeper Inspection", "Infra Tracking", "Home Room" ]
+        for conference in conference_list:
+            if conference.name in conferences_to_ignore or not conference.attendees:
+                continue
+            msg += '{} ({}:{}Uhr - {}:{}Uhr)\n'.format(conference.name, conference.start.hour, conference.start.minute , conference.end.hour, conference.end.minute)
+            attendees = list(conference.attendees.values())
+            attendees.sort(key=lambda attendee: attendee.name.split()[-1])
+            for attendee in attendees:
+                msg +='\t{} ({})\n'.format(attendee.name, str(attendee.duration).split(".")[0])
+            msg += '\n'
+        return msg
+
+    def send_mail(self):
+        message = self.generate_attendants_list()
+        context = ssl.create_default_context()
+        msg = MIMEText(message, 'plain', 'utf-8')
+        msg['Subject'] = self.subject
+        msg['From'] = self.args.mail_from
+        msg['To'] = self.args.mail_to
+
+        with smtplib.SMTP_SSL(host=self.args.host_sender, port=self.args.port_sender,
+                              context=context) as server:
+            server.login(self.args.login_sender, self.args.password_sender)
+            server.sendmail(msg['From'], msg['To'], msg.as_string())
+
+    def run(self):
+        self.parse_log_file(self.args.logfile)
+        self.extract_conferences_from_log()
+        self.finish_uncomplete_conferences()
+        self.send_mail()
+
+if __name__ == '__main__':
+    LogParser().run()
