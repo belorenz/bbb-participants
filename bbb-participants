@@ -57,6 +57,7 @@ class LogParser:
         self.args = argparser.parse_args()
         self.events_of_interest = []
         self.conferences = {}
+        self.conferences_to_ignore = [ "BoB Jour Fixe", "Sleeper Inspection", "Infra Tracking", "Home Room" ]
         self.date_of_log = None
 
 
@@ -152,9 +153,8 @@ class LogParser:
         conference_list.sort(key=lambda conference : conference.start)
         msg = self.subject + '\n\n'
 
-        conferences_to_ignore = [ "BoB Jour Fixe", "Sleeper Inspection", "Infra Tracking", "Home Room" ]
         for conference in conference_list:
-            if conference.name in conferences_to_ignore or not conference.attendees:
+            if conference.name in self.conferences_to_ignore or not conference.attendees:
                 continue
             msg += '{} ({}:{}Uhr - {}:{}Uhr)\n'.format(conference.name, conference.start.hour, conference.start.minute , conference.end.hour, conference.end.minute)
             attendees = list(conference.attendees.values())
