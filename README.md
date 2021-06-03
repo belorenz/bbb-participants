@@ -1,9 +1,9 @@
 # bbb-participants
-Extracts participants from `BigBlueButton` 2.2 conferences from the log file and sends them to an E-Mail address.
+Extracts participants from `BigBlueButton` 2.2 and 2.3 conferences from the log file and sends them to an E-Mail address.
 
 The result is a list of all conferences including their participants sorted by starting time of the conference. 
-The script also allows to exclude some conferences,
-the output is written in german, but can easily be changed to a different language with little effort (basically just change `self.subject` + "Uhr").
+The script also allows to exclude some conferences.
+The output is written in german, but can easily be changed to a different language with little effort (basically just change `self.subject` + "Uhr").
 
 ## usage
 
