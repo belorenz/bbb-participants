@@ -145,6 +145,7 @@ if __name__ == '__main__':
     argparser.add_argument(
         '--host_sender',
         type=str,
+        required=True,
         metavar='H',
         help='Hostname of mail server to send report from.')
     argparser.add_argument(
@@ -156,21 +157,25 @@ if __name__ == '__main__':
     argparser.add_argument(
         '--login_sender',
         type=str,
+        required=True,
         metavar='l',
         help='Login for email account to send report from.')
     argparser.add_argument(
         '--password_sender',
         type=str,
+        required=True,
         metavar='p',
         help='Password for email account to send report from.')
     argparser.add_argument(
         '--mail_to',
         type=str,
+        required=True,
         metavar='m',
         help='E-Mail address to send report to.')
     argparser.add_argument(
         '--mail_from',
         type=str,
+        required=True,
         metavar='M',
         help='E-Mail address to send report from.')
     args = argparser.parse_args()
