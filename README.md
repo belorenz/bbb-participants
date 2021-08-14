@@ -24,7 +24,7 @@ Raum14 Drittmittelprojekte (9:48Uhr - 17:3Uhr)
 
 
 The script also allows to exclude some conferences.
-The output is in german, but can easily be changed to a different language with little effort (basically `self.subject` + "Uhr").
+The output is written in german, but can easily be changed to a different language with little effort (basically just change `self.subject` + "Uhr").
 
 ## Usage
 
