@@ -1,5 +1,5 @@
 # bbb-participants
-Extracts participants `BigBlueButton` 2.3 (also 2.2) conferences from the log file.
+Extracts participants of `BigBlueButton` 2.3 (also 2.2) conferences from the log file.
 It can either print the result or send it via E-Mail.
 The result is a list of all conferences including their participants sorted by starting time of the conference.
 
